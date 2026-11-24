@@ -1,0 +1,18 @@
+rules_version = '2';
+
+// Product/category images: public read, admin-only upload
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in ['ferashatem02@gmail.com', 'ibrahim@gmail.com'];
+    }
+
+    match /{folder}/{fileName} {
+      allow read: if true;
+      allow write: if isAdmin()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+  }
+}

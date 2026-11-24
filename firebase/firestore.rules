@@ -1,0 +1,76 @@
+rules_version = '2';
+
+// Dermalake production rules
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Admin = signed-in user whose email is in this list.
+    // Add more emails here if you ever need another admin.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in ['ferashatem02@gmail.com', 'ibrahim@gmail.com'];
+    }
+
+    // Anyone can read the catalog; only the admin can write it — except that
+    // submitting a review bumps rating/reviews_count by exactly one review's worth,
+    // and placing an order bumps sales_count by a bounded, positive amount
+    match /products/{productId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['rating', 'reviews_count'])
+            && request.resource.data.reviews_count == resource.data.reviews_count + 1)
+        || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['sales_count'])
+            && request.resource.data.sales_count > resource.data.sales_count
+            && request.resource.data.sales_count <= resource.data.sales_count + 50);
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Home page magazine cards — public read, admin-managed
+    match /home_slides/{slideId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Offers popup cards — public read, admin-managed
+    match /offers/{offerId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Anyone can read reviews and add a valid one; admin can moderate
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAll(['product_id', 'author_name', 'rating', 'comment', 'created_at'])
+        && request.resource.data.rating is int
+        && request.resource.data.rating >= 1
+        && request.resource.data.rating <= 5
+        && request.resource.data.author_name is string
+        && request.resource.data.author_name.size() > 0
+        && request.resource.data.author_name.size() <= 60
+        && request.resource.data.comment is string
+        && request.resource.data.comment.size() <= 1000;
+      allow update, delete: if isAdmin();
+    }
+
+    // Guests can place orders; only the admin can read them or change their status
+    match /orders/{orderId} {
+      allow read: if isAdmin();
+      allow create: if request.resource.data.keys().hasAll(['customer_name', 'phone', 'address', 'city', 'items', 'total', 'status'])
+        && request.resource.data.status == 'pending'
+        && request.resource.data.customer_name is string
+        && request.resource.data.customer_name.size() > 0
+        && request.resource.data.phone is string
+        && request.resource.data.phone.size() >= 8
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0;
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin();
+    }
+  }
+}
